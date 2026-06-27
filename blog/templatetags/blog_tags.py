@@ -1,5 +1,6 @@
 from django import template
 from ..models import Post
+from django.db.models import Count
 
 register = template.Library()
 
@@ -7,5 +8,7 @@ register = template.Library()
 def total_posts():
     return Post.objects.count()
 
-
-        
+@register.inclusion_tag('blog/post/latest_posts.html')
+def show_latest_posts(count=5):
+    latest_posts = Post.published.order_by('-publish')[:count]
+    return {'latest_posts': latest_posts}
