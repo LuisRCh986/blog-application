@@ -6,11 +6,13 @@ from django.views.generic import ListView
 from .form import EmailPostForm, CommentForm
 from django.core.mail import send_mail
 from taggit.models import Tag
+from django.db.models import Count
 
 
 # Create your views here.
 def post_list(request, tag_slug=None):
     post_list = Post.published.all()
+    tag = None
     if tag_slug:
         tag = get_object_or_404(Tag, slug=tag_slug)
         post_list = post_list.filter(tags__in=[tag])
@@ -27,7 +29,8 @@ def post_list(request, tag_slug=None):
         # If page_number is out of range get last page of results
         posts = paginator.page(paginator.num_pages)
 
-    return render(request, 'blog/post/list.html', {'posts': posts, 'tag':tag})
+    return render(request, 'blog/post/list.html', {'posts': posts, 'tag': tag})
+
 
 def post_detail(request, year, month, day, post):
     post = get_object_or_404(Post, status=Post.Status.PUBLISHED, slug=post, publish__year=year,
@@ -38,7 +41,14 @@ def post_detail(request, year, month, day, post):
     # Form for users to comment
     form = CommentForm()
 
-    return render(request, 'blog/post/detail.html', {'post': post, 'comments': comments, 'form': form})
+    # List of similar posts
+    post_tags_ids = post.tags.values_list('id', flat=True)
+    similar_posts = Post.published.filter(tags__in=post_tags_ids).exclude(id=post.id)
+    similar_posts = similar_posts.annotate(same_tags=Count('tags')).order_by('-same_tags', '-publish')[:4]
+
+    return render(request, 'blog/post/detail.html',
+                  {'post': post, 'comments': comments, 'form': form, 'similar_posts': similar_posts})
+
 
 class PostListView(ListView):
     """
@@ -48,6 +58,7 @@ class PostListView(ListView):
     context_object_name = 'posts'
     paginate_by = 3
     template_name = 'blog/post/list.html'
+
 
 def post_share(request, post_id):
     # Retrieve post by id
@@ -75,6 +86,7 @@ def post_share(request, post_id):
     else:
         form = EmailPostForm()
     return render(request, 'blog/post/share.html', {'post': post, 'form': form, 'sent': sent})
+
 
 @require_POST
 def post_comment(request, post_id):
